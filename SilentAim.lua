@@ -44,7 +44,7 @@ local Mouse       = LP:GetMouse()
 ------------------------------------------------------------
 local Config = {
     Enabled         = false,
-    ToggleKey       = Enum.UserInputType.MouseButton4,
+    ToggleKey       = Enum.KeyCode.V,          -- V키 토글 (Mouse4 미지원 호환)
     UIToggleKey     = Enum.KeyCode.RightShift,
 
     FOV             = 130,
@@ -311,7 +311,7 @@ Instance.new("UICorner", statusDot).CornerRadius = UDim.new(1,0)
 
 local statusLbl = Instance.new("TextLabel", statusCard)
 statusLbl.Size = UDim2.new(1,-32,0,16); statusLbl.Position = UDim2.new(0,28,0,6)
-statusLbl.BackgroundTransparency = 1; statusLbl.Text = "OFF - Mouse4 to toggle"
+statusLbl.BackgroundTransparency = 1; statusLbl.Text = "OFF - V to toggle"
 statusLbl.TextColor3 = C.sub; statusLbl.TextSize = 13
 statusLbl.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json", Enum.FontWeight.Bold)
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -325,7 +325,7 @@ targetLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 local function refreshStatus()
     statusDot.BackgroundColor3 = Config.Enabled and C.on or C.off
-    statusLbl.Text = Config.Enabled and "ON - Silent Aim Active" or "OFF - Mouse4 to toggle"
+    statusLbl.Text = Config.Enabled and "ON - Silent Aim Active" or "OFF - V to toggle"
     statusLbl.TextColor3 = Config.Enabled and C.on or C.sub
 end
 
@@ -496,7 +496,7 @@ end)
 ------------------------------------------------------------
 Connections.Input = UserInput.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.UserInputType == Config.ToggleKey then
+    if input.KeyCode == Config.ToggleKey then
         Config.Enabled = not Config.Enabled
         refreshStatus(); refreshEnabled()
     end
@@ -519,4 +519,4 @@ end
 shared._SilentAimActive = destroy
 
 refreshStatus()
-print("[SilentAim] Loaded! Mouse4=Toggle | RShift=Hide GUI")
+print("[SilentAim] Loaded! V=Toggle | RShift=Hide GUI")
