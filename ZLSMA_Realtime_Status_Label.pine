@@ -1,28 +1,28 @@
 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // Based on original idea by veryfid
 
-//@version=4
-study(title="ZLSMA - Zero Lag LSMA (Realtime Status)", shorttitle="ZLSMA+", overlay=true, resolution="")
+//@version=6
+indicator(title="ZLSMA - Zero Lag LSMA (Realtime Status)", shorttitle="ZLSMA+", overlay=true, max_labels_count=200)
 
-length = input(title="Length", type=input.integer, defval=32, minval=1)
-offset = input(title="Offset", type=input.integer, defval=0)
-src = input(close, title="Source")
+length = input.int(32, "Length", minval=1)
+offset = input.int(0, "Offset")
+src = input.source(close, "Source")
 
-showStatusLabel = input(title="Show Realtime Status Label", type=input.bool, defval=true)
-labelOffsetBars = input(title="Label Offset Bars", type=input.integer, defval=1, minval=0, maxval=20)
-atrLen = input(title="ATR Length", type=input.integer, defval=14, minval=1)
-sidewaysAtrMult = input(title="Sideways Threshold (ATR Mult)", type=input.float, defval=0.03, step=0.01, minval=0.0)
-showStateBackground = input(title="Show State Background", type=input.bool, defval=false)
+showStatusLabel = input.bool(true, "Show Realtime Status Label")
+labelOffsetBars = input.int(1, "Label Offset Bars", minval=0, maxval=20)
+atrLen = input.int(14, "ATR Length", minval=1)
+sidewaysAtrMult = input.float(0.03, "Sideways Threshold (ATR Mult)", step=0.01, minval=0.0)
+showStateBackground = input.bool(false, "Show State Background")
 
 // Core ZLSMA calculation
-lsma = linreg(src, length, offset)
-lsma2 = linreg(lsma, length, offset)
+lsma = ta.linreg(src, length, offset)
+lsma2 = ta.linreg(lsma, length, offset)
 eq = lsma - lsma2
 zlsma = lsma + eq
 
 // Realtime state classification
 slope = zlsma - zlsma[1]
-atrValue = atr(atrLen)
+atrValue = ta.atr(atrLen)
 sidewaysThreshold = atrValue * sidewaysAtrMult
 
 trendState = slope > sidewaysThreshold ? 1 : slope < -sidewaysThreshold ? -1 : 0
@@ -32,8 +32,8 @@ priceText = close > zlsma ? "PRICE ABOVE ZLSMA" : close < zlsma ? "PRICE BELOW Z
 lineColor = trendState == 1 ? color.lime : trendState == -1 ? color.red : color.yellow
 plot(zlsma, color=lineColor, linewidth=3, title="ZLSMA")
 
-if showStateBackground
-    bgcolor(trendState == 1 ? color.new(color.green, 92) : trendState == -1 ? color.new(color.red, 92) : color.new(color.gray, 94))
+bgColor = showStateBackground ? (trendState == 1 ? color.new(color.green, 92) : trendState == -1 ? color.new(color.red, 92) : color.new(color.gray, 94)) : na
+bgcolor(bgColor)
 
 // Trend change markers (optional visual aid)
 upShift = trendState == 1 and trendState[1] != 1
@@ -51,8 +51,8 @@ if barstate.islast and showStatusLabel
         label.delete(statusLabel)
 
     functionText = "ZLSMA: Zero-Lag trend filter"
-    slopeRounded = round(slope * 10000) / 10000
-    statusText = functionText + "\nState: " + trendText + "\n" + priceText + "\nSlope: " + tostring(slopeRounded)
+    slopeRounded = math.round(slope * 10000) / 10000
+    statusText = functionText + "\nState: " + trendText + "\n" + priceText + "\nSlope: " + str.tostring(slopeRounded)
     statusColor = trendState == 1 ? color.green : trendState == -1 ? color.red : color.gray
 
     statusLabel := label.new(
