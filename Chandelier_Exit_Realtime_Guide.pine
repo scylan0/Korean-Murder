@@ -1,5 +1,5 @@
 //@version=6
-indicator("Chandelier Exit - Realtime Guide", "Chandelier+", overlay=true, timeframe="", timeframe_gaps=true, max_labels_count=200)
+indicator("Chandelier Exit - Realtime Guide", "Chandelier+", overlay=true, max_labels_count=200)
 
 import TradingView/ta/11 as TVta
 
