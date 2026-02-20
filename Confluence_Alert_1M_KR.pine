@@ -161,8 +161,15 @@ pullbackShort = math.abs(close - emaFast) <= entryAtr * pullbackAtrMult and clos
 smallBullRebound = close > open and close > close[1] and low <= emaFast
 smallBearReject = close < open and close < close[1] and high >= emaFast
 
-bullScalpTrigger = ta.crossover(ta.ema(close, 5), ta.ema(close, 10)) or ta.crossover(close, emaFast)
-bearScalpTrigger = ta.crossunder(ta.ema(close, 5), ta.ema(close, 10)) or ta.crossunder(close, emaFast)
+triggerEma5 = ta.ema(close, 5)
+triggerEma10 = ta.ema(close, 10)
+emaCrossUp = ta.crossover(triggerEma5, triggerEma10)
+emaCrossDown = ta.crossunder(triggerEma5, triggerEma10)
+priceCrossUp = ta.crossover(close, emaFast)
+priceCrossDown = ta.crossunder(close, emaFast)
+
+bullScalpTrigger = emaCrossUp or priceCrossUp
+bearScalpTrigger = emaCrossDown or priceCrossDown
 
 entryLongTrigger = pullbackLong or smallBullRebound or bullScalpTrigger
 entryShortTrigger = pullbackShort or smallBearReject or bearScalpTrigger
@@ -172,13 +179,13 @@ entryShortTrigger = pullbackShort or smallBearReject or bearScalpTrigger
 // ============================================================================
 
 emaTight = (emaSpreadNow / close) * 100 <= emaTightPct
-zFlipCount = ta.sum(zTrend != zTrend[1] ? 1.0 : 0.0, sideLookback)
+zFlipCount = math.sum(zTrend != zTrend[1] ? 1.0 : 0.0, sideLookback)
 zWhipsaw = zFlipCount >= zFlipThreshold
 
-predictaNeutralCount = ta.sum(predictaNeutral ? 1.0 : 0.0, sideLookback)
+predictaNeutralCount = math.sum(predictaNeutral ? 1.0 : 0.0, sideLookback)
 predictaChop = predictaNeutralCount >= predictaNeutralBarsThreshold
 
-chFlipCount = ta.sum(chTrend != chTrend[1] ? 1.0 : 0.0, sideLookback)
+chFlipCount = math.sum(chTrend != chTrend[1] ? 1.0 : 0.0, sideLookback)
 chWhipsaw = chFlipCount >= chFlipThreshold
 
 sidewaysScore = (emaTight ? 1 : 0) + (zWhipsaw ? 1 : 0) + (predictaChop ? 1 : 0) + (chWhipsaw ? 1 : 0)
