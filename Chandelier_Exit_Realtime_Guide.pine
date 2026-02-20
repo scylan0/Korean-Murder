@@ -1,0 +1,72 @@
+//@version=6
+indicator("Chandelier Exit - Realtime Guide", "Chandelier+", overlay=true, timeframe="", timeframe_gaps=true, max_labels_count=200)
+
+import TradingView/ta/11 as TVta
+
+// Inputs
+lengthInput = input.int(22, "Length", minval=1)
+atrLenInput = input.int(22, "ATR length", minval=1)
+atrMultInput = input.float(3.0, "ATR multiplier", minval=0.0, step=0.01)
+
+showLineLabels = input.bool(true, "Show line-end labels")
+showStatusLabel = input.bool(true, "Show realtime status label")
+labelOffsetBars = input.int(1, "Label offset bars", minval=0, maxval=20)
+showBandFill = input.bool(true, "Show zone fill between exits")
+showTrendBackground = input.bool(false, "Show trend background")
+
+// Chandelier values
+[longCE, shortCE] = TVta.chandelier(lengthInput, atrLenInput, atrMultInput)
+
+longColor = color.new(color.lime, 0)
+shortColor = color.new(#ff6d00, 0)
+
+longPlot = plot(longCE, "Long Exit (LONG trailing stop)", color=longColor, linewidth=2)
+shortPlot = plot(shortCE, "Short Exit (SHORT trailing stop)", color=shortColor, linewidth=2)
+fill(longPlot, shortPlot, color=showBandFill ? color.new(color.aqua, 92) : na, title="Chandelier Exit Zone")
+
+// Realtime regime/state
+aboveShortExit = close > shortCE
+belowLongExit = close < longCE
+
+var int trendState = 0
+trendState := aboveShortExit ? 1 : belowLongExit ? -1 : nz(trendState[1], 0)
+
+stateText = aboveShortExit ? "BULLISH BREAKOUT (close > short exit)" : belowLongExit ? "BEARISH BREAKDOWN (close < long exit)" : trendState == 1 ? "BULLISH PULLBACK (inside exit zone)" : trendState == -1 ? "BEARISH BOUNCE (inside exit zone)" : "NEUTRAL (inside exit zone)"
+
+bgColor = showTrendBackground ? (trendState == 1 ? color.new(color.green, 92) : trendState == -1 ? color.new(color.red, 92) : color.new(color.gray, 94)) : na
+bgcolor(bgColor)
+
+gapLongPct = na(longCE) ? na : ((close - longCE) / close) * 100
+gapShortPct = na(shortCE) ? na : ((shortCE - close) / close) * 100
+
+trendShiftUp = trendState == 1 and trendState[1] != 1
+trendShiftDown = trendState == -1 and trendState[1] != -1
+plotshape(trendShiftUp, title="State -> Bullish", style=shape.triangleup, location=location.belowbar, color=longColor, text="BULL", textcolor=color.white, size=size.tiny)
+plotshape(trendShiftDown, title="State -> Bearish", style=shape.triangledown, location=location.abovebar, color=shortColor, text="BEAR", textcolor=color.white, size=size.tiny)
+
+// Line-end labels
+var label longLabel = na
+var label shortLabel = na
+var label statusLabel = na
+
+if barstate.islast
+    if not na(longLabel)
+        label.delete(longLabel)
+    if not na(shortLabel)
+        label.delete(shortLabel)
+    if not na(statusLabel)
+        label.delete(statusLabel)
+
+    if showLineLabels and not na(longCE)
+        longText = "LONG EXIT\nTrailing stop for longs\nDistance: " + str.tostring(gapLongPct, "#.##") + "%"
+        longLabel := label.new(x=bar_index + labelOffsetBars, y=longCE, text=longText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=longColor, textcolor=color.white, size=size.small)
+
+    if showLineLabels and not na(shortCE)
+        shortText = "SHORT EXIT\nTrailing stop for shorts\nDistance: " + str.tostring(gapShortPct, "#.##") + "%"
+        shortLabel := label.new(x=bar_index + labelOffsetBars, y=shortCE, text=shortText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=shortColor, textcolor=color.white, size=size.small)
+
+    if showStatusLabel
+        midY = na(longCE) or na(shortCE) ? close : (longCE + shortCE) / 2
+        stateColor = trendState == 1 ? color.new(color.green, 0) : trendState == -1 ? color.new(color.red, 0) : color.new(color.gray, 0)
+        statusText = "CHANDELIER STATUS\n" + stateText + "\nClose: " + str.tostring(close, format.mintick)
+        statusLabel := label.new(x=bar_index + labelOffsetBars, y=midY, text=statusText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=stateColor, textcolor=color.white, size=size.normal)
