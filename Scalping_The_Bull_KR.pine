@@ -1,0 +1,440 @@
+// This source code is subject to the terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+// © TheSocialCryptoClub
+
+//@version=5
+indicator('스캘핑 더 불 인디케이터', shorttitle='스캘핑 더 불 🐂 1.07', overlay=true)
+
+// -----------------------------------------------------------------------------
+// 입력 설정
+// -----------------------------------------------------------------------------
+
+input_ema = input.string(
+     defval='자동',
+     options=['자동', '암호화폐', '주식'],
+     group='시장',
+     title='시장별 EMA',
+     tooltip='바이낸스/코인 거래소는 자동으로 암호화폐 EMA를 적용합니다. 기타 시장은 선택한 EMA를 사용합니다.')
+
+cryptoema = input_ema == '암호화폐' or
+   (input_ema == '자동' and
+   (syminfo.prefix == 'BINANCE' or syminfo.prefix == 'BITTREX' or syminfo.prefix == 'UPBIT' or syminfo.prefix == 'BITHUMB' or
+   syminfo.prefix == 'BITMEX' or syminfo.prefix == 'KUCOIN' or syminfo.prefix == 'BYBIT' or syminfo.prefix == 'POLONIEX' or
+   syminfo.prefix == 'BITFINEX' or syminfo.prefix == 'BITSTAMP' or syminfo.prefix == 'COINBASE' or syminfo.prefix == 'KRAKEN' or
+   syminfo.prefix == 'OKEX' or syminfo.prefix == 'KRAKEN' or syminfo.prefix == 'COINEX' or syminfo.prefix == 'GATEIO' or syminfo.prefix == 'BITGET'))
+
+len1 = 5
+len2 = 10
+len3 = cryptoema ? 60 : 50
+len4 = cryptoema ? 223 : 200
+
+ema20 = input(false, '추가 EMA 표시', group='시장', inline='ema20')
+len5 = input(20, title='', group='시장', inline='ema20')
+
+show_ema_line_label = input.bool(true, 'EMA 선 끝 라벨', group='시장', inline='emaLabel')
+ema_label_offset = input.int(18, '', minval=5, maxval=200, group='시장', inline='emaLabel')
+
+bg = input(false, '배경색', group='차트 요소', tooltip='EMA 223 > 60이면 빨강, EMA 60 > 223이면 초록 배경')
+session = input(true, '세션 구분선', group='차트 요소')
+
+show_table = input(false, '다중 TF EMA 테이블', group='테이블')
+show_table_limit = input.bool(false, '정보 테이블', group='테이블', inline='table sl')
+perc_spread = input.float(0.2, ' - % 스톱-리밋 스프레드', step=0.05, group='테이블', inline='table sl', tooltip='Stop과 Limit 가격 간 퍼센트 간격')
+
+show_ema_daily = input(false, '일봉 EMA', group='도구')
+show_ema_30m_1h = input(false, '30분-1시간 EMA 레벨', group='도구', inline='ema')
+
+show_ema_4h = input(false, '상위 TF EMA 레벨', group='도구', inline='livelli ema')
+input_tf_livelli_ema = input.string(defval='4h', options=['2h', '4h', '6h', '12h', 'D'], group='도구', inline='livelli ema', title=' - ')
+
+show_hammer = input(false, '해머 감지기', group='도구')
+attiva_azzeramento = input.bool(false, '압축 캔들 감지', group='도구', tooltip='30분 이상 TF에서 EMA 부근 압축 캔들을 표시')
+show_no_fomo = input.bool(false, '추격매수 금지 🚫', group='도구', inline='no fomo')
+ContacandeleLength = input.int(20, '- 임계값', group='도구', inline='no fomo', tooltip='EMA5가 EMA10 위에 유지된 캔들 수 임계값')
+
+max_min_today = input(true, '오늘 트리거: ', group='트리거 포인트', inline='max oggi')
+
+color_max_today = input.color(color.purple, '고가', group='트리거 포인트', inline='max oggi')
+color_min_today = input.color(#C90016, '저가', group='트리거 포인트', inline='max oggi')
+color_open_today = input.color(color.green, '시가/종가', group='트리거 포인트', inline='max oggi')
+
+max_min_yesterday = input(true, '어제 트리거: ', group='트리거 포인트', inline='max ieri')
+
+color_max_yesterday = input.color(color.yellow, '고가', group='트리거 포인트', inline='max ieri')
+color_min_yesterday = input.color(#E8000D, '저가', group='트리거 포인트', inline='max ieri')
+color_close_yesterday = input.color(color.orange, '시가/종가', group='트리거 포인트', inline='max ieri')
+
+show_lab = input(true, '레전드 표시', group='트리거 포인트', inline='name')
+offset = input(30, title='  - 가격과 라벨 거리', group='트리거 포인트', inline='name')
+
+// -----------------------------------------------------------------------------
+// EMA
+// -----------------------------------------------------------------------------
+
+ma1 = ta.ema(close, len1)
+ma2 = ta.ema(close, len2)
+ma3 = ta.ema(close, len3)
+ma4 = ta.ema(close, len4)
+ma5 = ta.ema(close, len5)
+
+plot(ma1, title='EMA 초단기', color=color.new(color.red, 0))
+plot(ma2, title='EMA 단기', color=color.new(color.yellow, 0), linewidth=2)
+plot(ma3, title='EMA 장기', color=color.new(color.aqua, 0), linewidth=2)
+plot(ma4, title='EMA 초장기', color=color.new(color.purple, 0), linewidth=2)
+plot(ema20 ? ma5 : na, title='EMA 추가', color=color.new(color.orange, 0), linewidth=2)
+
+cond_bg = bg and ma4 > ma3
+cond_bg2 = bg and ma4 < ma3
+bgcolor(cond_bg ? color.new(color.red, 90) : na, title='배경')
+bgcolor(cond_bg2 ? color.new(color.green, 90) : na, title='배경')
+
+// EMA 선 끝 라벨
+var label emaLab1 = label.new(na, na, '', textcolor=color.red, style=label.style_none)
+var label emaLab2 = label.new(na, na, '', textcolor=color.yellow, style=label.style_none)
+var label emaLab3 = label.new(na, na, '', textcolor=color.aqua, style=label.style_none)
+var label emaLab4 = label.new(na, na, '', textcolor=color.purple, style=label.style_none)
+var label emaLab5 = label.new(na, na, '', textcolor=color.orange, style=label.style_none)
+
+F_EmaLab(_lab, _y, _txt, _col) =>
+    label.set_x(_lab, bar_index + ema_label_offset)
+    label.set_y(_lab, _y)
+    label.set_text(_lab, _txt)
+    label.set_textcolor(_lab, _col)
+
+if barstate.islast
+    if show_ema_line_label
+        F_EmaLab(emaLab1, ma1, 'EMA' + str.tostring(len1) + ' 선', color.red)
+        F_EmaLab(emaLab2, ma2, 'EMA' + str.tostring(len2) + ' 선', color.yellow)
+        F_EmaLab(emaLab3, ma3, 'EMA' + str.tostring(len3) + ' 선', color.aqua)
+        F_EmaLab(emaLab4, ma4, 'EMA' + str.tostring(len4) + ' 선', color.purple)
+        if ema20
+            F_EmaLab(emaLab5, ma5, 'EMA' + str.tostring(len5) + ' 선', color.orange)
+        else
+            label.set_text(emaLab5, '')
+    else
+        label.set_text(emaLab1, '')
+        label.set_text(emaLab2, '')
+        label.set_text(emaLab3, '')
+        label.set_text(emaLab4, '')
+        label.set_text(emaLab5, '')
+
+// -----------------------------------------------------------------------------
+// 오늘 트리거 포인트
+// -----------------------------------------------------------------------------
+
+open_session = ta.change(time('D'))
+price_session = ta.valuewhen(open_session, open, 0)
+same_day = not open_session
+
+tf_session = timeframe.multiplier <= 60 and timeframe.isintraday
+
+bgcolor(session and open_session and tf_session ? color.new(color.blue, 80) : na, title='세션 구분선')
+
+first_bar = 0
+if open_session
+    first_bar := bar_index
+
+F_Line(_line, _y) =>
+    line.set_xy1(_line, first_bar, _y)
+    line.set_xy2(_line, bar_index, _y)
+
+var max_today = 0.0
+var min_today = 0.0
+var high_daily1 = 0.0
+var low_daily1 = 0.0
+var today_open = 0.0
+var yesterday_close = 0.0
+
+if first_bar
+    high_daily1 := max_today
+    low_daily1 := min_today
+    today_open := open
+    max_today := high
+    min_today := low
+    yesterday_close := close[1]
+
+if high >= max_today
+    max_today := high
+
+if low < min_today
+    min_today := low
+
+timed = time('D')
+line line_min_today = na
+line line_max_today = na
+
+if barstate.islast and timeframe.isintraday and max_min_today and not first_bar
+    line.delete(line_min_today[1])
+    line_min_today := line.new(x1=timed, y1=min_today, x2=time, y2=min_today, color=color_min_today, xloc=xloc.bar_time, extend=extend.right, width=2)
+    line.new(x1=timed, y1=today_open, x2=time, y2=today_open, color=cryptoema ? color_open_today : color_close_yesterday, xloc=xloc.bar_time, extend=extend.right, width=2, style=cryptoema ? line.style_solid : line.style_dashed)
+    line.delete(line_max_today[1])
+    line_max_today := line.new(x1=timed, y1=max_today, x2=time, y2=max_today, color=color_max_today, xloc=xloc.bar_time, extend=extend.right, width=2)
+
+// -----------------------------------------------------------------------------
+// 어제 트리거 포인트
+// -----------------------------------------------------------------------------
+
+var line highd1_line = line.new(na, na, na, na, xloc=xloc.bar_time, extend=extend.both, color=color_max_yesterday, style=line.style_dotted, width=2)
+var line lowd1_line = line.new(na, na, na, na, xloc=xloc.bar_time, extend=extend.both, color=color_min_yesterday, style=line.style_dotted, width=2)
+
+if timeframe.isintraday
+    F_Line(highd1_line, max_min_yesterday ? high_daily1 : na)
+    F_Line(lowd1_line, max_min_yesterday ? low_daily1 : na)
+
+// -----------------------------------------------------------------------------
+// 트리거 라벨
+// -----------------------------------------------------------------------------
+
+var label myLab_open = label.new(na, na, ' 시가 ', textcolor=cryptoema ? color_open_today : color_close_yesterday, style=label.style_none)
+var label myLab_high = label.new(na, na, ' 고가 ', textcolor=color_max_today, style=label.style_none)
+var label myLab_low = label.new(na, na, ' 저가 ', textcolor=color_min_today, style=label.style_none)
+
+var label myLab_close_yesterday = label.new(na, na, '전일 종가', textcolor=color_open_today, style=label.style_none)
+var label myLab_high_yesterday = label.new(na, na, '전일 고가', textcolor=color_max_yesterday, style=label.style_none)
+var label myLab_low_yesterday = label.new(na, na, '전일 저가', textcolor=color_min_yesterday, style=label.style_none)
+
+F_Lab(_lab, _y) =>
+    label.set_x(_lab, bar_index + offset)
+    label.set_y(_lab, _y)
+
+F_Lab(timeframe.isintraday and show_lab and max_min_today ? myLab_open : na, today_open)
+F_Lab(timeframe.isintraday and show_lab and max_min_today ? myLab_high : na, max_today)
+F_Lab(timeframe.isintraday and show_lab and max_min_today ? myLab_low : na, min_today)
+
+F_Lab(timeframe.isintraday and show_lab and max_min_yesterday ? myLab_high_yesterday : na, high_daily1)
+F_Lab(timeframe.isintraday and show_lab and max_min_yesterday ? myLab_low_yesterday : na, low_daily1)
+
+if barstate.islast and timeframe.isintraday and not cryptoema and max_min_today
+    line.new(x1=timed, y1=yesterday_close, x2=time, y2=yesterday_close, color=color_open_today, xloc=xloc.bar_time, extend=extend.right, width=2)
+    F_Lab(show_lab ? myLab_close_yesterday : na, yesterday_close)
+
+// -----------------------------------------------------------------------------
+// EMA DAILY
+// -----------------------------------------------------------------------------
+
+g1l0_5 = request.security(syminfo.tickerid, '1D', ma1, barmerge.gaps_on, barmerge.lookahead_off)
+g0l0_5 = request.security(syminfo.tickerid, '1D', ma1, barmerge.gaps_off, barmerge.lookahead_off)
+
+g1l0_10 = request.security(syminfo.tickerid, '1D', ma2, barmerge.gaps_on, barmerge.lookahead_off)
+g0l0_10 = request.security(syminfo.tickerid, '1D', ma2, barmerge.gaps_off, barmerge.lookahead_off)
+
+g1l0_60 = request.security(syminfo.tickerid, '1D', ma3, barmerge.gaps_on, barmerge.lookahead_off)
+g0l0_60 = request.security(syminfo.tickerid, '1D', ma3, barmerge.gaps_off, barmerge.lookahead_off)
+
+g1l0_223 = request.security(syminfo.tickerid, '1D', ma4, barmerge.gaps_on, barmerge.lookahead_off)
+g0l0_223 = request.security(syminfo.tickerid, '1D', ma4, barmerge.gaps_off, barmerge.lookahead_off)
+
+print_5 = barstate.isrealtime ? g0l0_5 : g1l0_5
+plot(timeframe.isintraday and show_ema_daily ? print_5 : na, '일봉 EMA 5', linewidth=6, color=color.new(color.gray, 50))
+plot(timeframe.isintraday and show_ema_daily ? print_5 : na, '일봉 EMA 5', linewidth=1, color=color.new(color.red, 10))
+
+print_10 = barstate.isrealtime ? g0l0_10 : g1l0_10
+plot(timeframe.isintraday and show_ema_daily ? print_10 : na, '일봉 EMA 10', linewidth=6, color=color.new(color.gray, 50))
+plot(timeframe.isintraday and show_ema_daily ? print_10 : na, '일봉 EMA 10', linewidth=1, color=color.new(color.yellow, 20))
+
+print_60 = barstate.isrealtime ? g0l0_60 : g1l0_60
+plot(timeframe.isintraday and show_ema_daily ? print_60 : na, '일봉 EMA 60', linewidth=6, color=color.new(color.gray, 50))
+plot(timeframe.isintraday and show_ema_daily ? print_60 : na, '일봉 EMA 60', linewidth=1, color=color.new(color.aqua, 10))
+
+print_223 = barstate.isrealtime ? g0l0_223 : g1l0_223
+plot(timeframe.isintraday and show_ema_daily ? print_223 : na, '일봉 EMA 223/200', linewidth=6, color=color.new(color.gray, 50))
+plot(timeframe.isintraday and show_ema_daily ? print_223 : na, '일봉 EMA 223/200', linewidth=1, color=color.new(color.purple, 10))
+
+// -----------------------------------------------------------------------------
+// 캔들 패턴 감지
+// -----------------------------------------------------------------------------
+
+green_candle = close > open and close - open < (open - low) / 3 and high - close < (open - low) / 3
+red_candle = close < open and open - close < (close - low) / 3 and high - open < (close - low) / 3
+
+hammer = green_candle or red_candle
+hammer_fin = hammer and not hammer[1]
+
+plotshape(show_hammer ? hammer_fin : na, '해머', style=shape.triangleup, location=location.belowbar, color=color.rgb(46, 131, 49), size=size.tiny)
+
+inverted_hammer_green = close > open and close - open < (high - close) / 3 and open - low < (high - close) / 3
+inverted_hammer_red = close < open and open - close < (high - open) / 3 and close - low < (high - open) / 3
+
+inverted_hammer = inverted_hammer_green or inverted_hammer_red
+inverted_hammer_fin = inverted_hammer and not inverted_hammer[1]
+
+plotshape(show_hammer ? inverted_hammer_fin : na, '역해머', style=shape.triangledown, location=location.abovebar, color=color.red, size=size.tiny)
+
+// -----------------------------------------------------------------------------
+// 압축 캔들(아제라멘토)
+// -----------------------------------------------------------------------------
+
+corpo = open > close ? open - close : close - open
+on_ema = high > ma3 and low < ma3 or high > ma4 and low < ma4
+red_c = close < open
+cond_ema10 = corpo < (ta.highest(high, 10) - ta.lowest(low, 10)) * 0.05 and ma3 > ma4 and high > ma2 and low < ma2
+
+doji = red_c[1] and on_ema and corpo < (ta.highest(high, 10) - ta.lowest(low, 10)) * 0.05 or red_c[1] and cond_ema10
+tf = timeframe.multiplier >= 30 or timeframe.isdaily
+
+doji_fin = doji and close[2] > ma2 and attiva_azzeramento and tf and not doji[1] and not doji[2] and not doji[3]
+
+plotshape(doji_fin, '압축 캔들', style=shape.circle, text='', textcolor=chart.fg_color, location=location.abovebar, color=color.new(color.orange, 0), size=size.tiny)
+
+// -----------------------------------------------------------------------------
+// EMA 테이블
+// -----------------------------------------------------------------------------
+
+[ema5_h12, ema10_h12, ema60_h12, ema223_h12] = request.security(syminfo.tickerid, '720', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_h6, ema10_h6, ema60_h6, ema223_h6] = request.security(syminfo.tickerid, '360', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_h4, ema10_h4, ema60_h4, ema223_h4] = request.security(syminfo.tickerid, '240', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_h2, ema10_h2, ema60_h2, ema223_h2] = request.security(syminfo.tickerid, '120', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_h1, ema10_h1, ema60_h1, ema223_h1] = request.security(syminfo.tickerid, '60', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_30m, ema10_30m, ema60_30m, ema223_30m] = request.security(syminfo.tickerid, '30', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_5m, ema10_5m, ema60_5m, ema223_5m] = request.security(syminfo.tickerid, '5', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+[ema5_1m, ema10_1m, ema60_1m, ema223_1m] = request.security(syminfo.tickerid, '1', [ma1, ma2, ma3, ma4], barmerge.gaps_off, barmerge.lookahead_off)
+
+val_ema5_1h = barstate.islast ? ema5_h1 : na
+val_ema10_1h = barstate.islast ? ema10_h1 : na
+
+val_ema5_30m = barstate.islast ? ema5_30m : na
+val_ema10_30m = barstate.islast ? ema10_30m : na
+val_ema60_30m = barstate.islast ? ema60_30m : na
+
+val_ema5_5m = barstate.islast ? ema5_5m : na
+val_ema10_5m = barstate.islast ? ema10_5m : na
+val_ema60_5m = barstate.islast ? ema60_5m : na
+val_ema223_5m = barstate.islast ? ema223_5m : na
+
+val_ema5_1m = barstate.islast ? ema5_1m : na
+val_ema10_1m = barstate.islast ? ema10_1m : na
+val_ema60_1m = barstate.islast ? ema60_1m : na
+val_ema223_1m = barstate.islast ? ema223_1m : na
+
+if barstate.islast and show_table
+    table summary_table = table.new(position.bottom_left, columns=6, rows=8, bgcolor=#0F0F0F, border_width=1, border_color=#000000)
+    table_text_color = #D3D3D3
+    table.cell(summary_table, 1, 0, '1시간', text_color=table_text_color, width=5, bgcolor=#0F0F0F)
+    table.cell(summary_table, 2, 0, '30분', text_color=table_text_color, width=5, bgcolor=#0F0F0F)
+    table.cell(summary_table, 3, 0, '5분', text_color=table_text_color, width=5, bgcolor=#0F0F0F)
+    table.cell(summary_table, 4, 0, '1분', text_color=table_text_color, width=5, bgcolor=#0F0F0F)
+
+    table.cell(summary_table, 1, 3, '', text_color=#D3D3D3, height=1, bgcolor=color.new(color.white, 40))
+    table.cell(summary_table, 2, 3, '', text_color=#D3D3D3, height=1, bgcolor=color.new(color.white, 40))
+    table.cell(summary_table, 3, 3, '', text_color=#D3D3D3, height=1, bgcolor=color.new(color.white, 40))
+    table.cell(summary_table, 4, 3, '', text_color=#D3D3D3, height=1, bgcolor=color.new(color.white, 40))
+
+    table.cell(summary_table, 1, 4, 'EMA 5' + '\n' + str.tostring(val_ema5_1h, format.mintick), text_color=table_text_color, bgcolor=color.new(color.red, 60))
+    table.cell(summary_table, 2, 4, 'EMA 10' + '\n' + str.tostring(val_ema10_30m, format.mintick), text_color=table_text_color, bgcolor=color.new(color.yellow, 60))
+    table.cell(summary_table, 3, 4, 'EMA 60' + '\n' + str.tostring(val_ema60_5m, format.mintick), text_color=table_text_color, bgcolor=color.new(color.aqua, 60))
+    table.cell(summary_table, 4, 4, 'EMA 223/200' + '\n' + str.tostring(val_ema223_1m, format.mintick), text_color=table_text_color, bgcolor=color.new(color.purple, 70))
+
+// -----------------------------------------------------------------------------
+// EMA 레벨
+// -----------------------------------------------------------------------------
+
+y10 = input_tf_livelli_ema == '2h' ? ema10_h2 : input_tf_livelli_ema == '4h' ? ema10_h4 : input_tf_livelli_ema == '6h' ? ema10_h6 : input_tf_livelli_ema == '12h' ? ema10_h12 : input_tf_livelli_ema == 'D' ? g0l0_10 : na
+y60 = input_tf_livelli_ema == '2h' ? ema60_h2 : input_tf_livelli_ema == '4h' ? ema60_h4 : input_tf_livelli_ema == '6h' ? ema60_h6 : input_tf_livelli_ema == '12h' ? ema60_h12 : input_tf_livelli_ema == 'D' ? g0l0_60 : na
+y223 = input_tf_livelli_ema == '2h' ? ema223_h2 : input_tf_livelli_ema == '4h' ? ema223_h4 : input_tf_livelli_ema == '6h' ? ema223_h6 : input_tf_livelli_ema == '12h' ? ema223_h12 : input_tf_livelli_ema == 'D' ? g0l0_223 : na
+
+lab_txt = input_tf_livelli_ema == '2h' ? '2h' : input_tf_livelli_ema == '4h' ? '4h' : input_tf_livelli_ema == '6h' ? '6h' : input_tf_livelli_ema == '12h' ? '12h' : input_tf_livelli_ema == 'D' ? 'D' : na
+tf_livelli_ema = input_tf_livelli_ema == '2h' ? 120 : input_tf_livelli_ema == '4h' ? 240 : input_tf_livelli_ema == '6h' ? 360 : input_tf_livelli_ema == '12h' ? 720 : input_tf_livelli_ema == 'D' ? 1400 : na
+
+my_tf_4h = timeframe.isintraday and timeframe.multiplier < tf_livelli_ema
+
+if barstate.islast and my_tf_4h and show_ema_4h
+    ema10_h4_line = line.new(x1=bar_index + 15, y1=y10, x2=bar_index, y2=y10, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.yellow)
+    line.delete(ema10_h4_line[1])
+    ema10_h4_label = label.new(x=bar_index + 15, y=y10, text=lab_txt, textcolor=color.yellow, style=label.style_none)
+    label.delete(ema10_h4_label[1])
+    ema60_h4_line = line.new(x1=bar_index + 15, y1=y60, x2=bar_index, y2=y60, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.aqua)
+    line.delete(ema60_h4_line[1])
+    ema60_h1_label = label.new(x=bar_index + 15, y=y60, text=lab_txt, textcolor=color.aqua, style=label.style_none)
+    label.delete(ema60_h1_label[1])
+    ema223_h4_line = line.new(x1=bar_index + 15, y1=y223, x2=bar_index, y2=y223, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.purple)
+    line.delete(ema223_h4_line[1])
+    ema223_h4_label = label.new(x=bar_index + 15, y=y223, text=lab_txt, textcolor=color.purple, style=label.style_none)
+    label.delete(ema223_h4_label[1])
+
+my_tf_1h = timeframe.isintraday and timeframe.multiplier < 60
+
+if barstate.islast and my_tf_1h and show_ema_30m_1h
+    ema10_h1_line = line.new(x1=bar_index + 10, y1=ema10_h1, x2=bar_index, y2=ema10_h1, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.yellow)
+    line.delete(ema10_h1_line[1])
+    ema10_h1_label = label.new(x=bar_index + 10, y=ema10_h1, text='1h', textcolor=color.yellow, style=label.style_none)
+    label.delete(ema10_h1_label[1])
+    ema60_h1_line = line.new(x1=bar_index + 10, y1=ema60_h1, x2=bar_index, y2=ema60_h1, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.aqua)
+    line.delete(ema60_h1_line[1])
+    ema60_h1_label = label.new(x=bar_index + 10, y=ema60_h1, text='1h', textcolor=color.aqua, style=label.style_none)
+    label.delete(ema60_h1_label[1])
+    ema223_h1_line = line.new(x1=bar_index + 10, y1=ema223_h1, x2=bar_index, y2=ema223_h1, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.purple)
+    line.delete(ema223_h1_line[1])
+    ema223_h1_label = label.new(x=bar_index + 10, y=ema223_h1, text='1h', textcolor=color.purple, style=label.style_none)
+    label.delete(ema223_h1_label[1])
+
+my_tf_30m = timeframe.isintraday and timeframe.multiplier < 30
+
+if barstate.islast and my_tf_30m and show_ema_30m_1h
+    ema10_30m_line = line.new(x1=bar_index + 4, y1=ema10_30m, x2=bar_index, y2=ema10_30m, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.yellow)
+    line.delete(ema10_30m_line[1])
+    ema10_30m_label = label.new(x=bar_index + 4, y=ema10_30m, text='30m', textcolor=color.yellow, style=label.style_none)
+    label.delete(ema10_30m_label[1])
+    ema60_30m_line = line.new(x1=bar_index + 4, y1=ema60_30m, x2=bar_index, y2=ema60_30m, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.aqua)
+    line.delete(ema60_30m_line[1])
+    ema60_30m_label = label.new(x=bar_index + 4, y=ema60_30m, text='30m', textcolor=color.aqua, style=label.style_none)
+    label.delete(ema60_30m_label[1])
+    ema223_30m_line = line.new(x1=bar_index + 4, y1=ema223_30m, x2=bar_index, y2=ema223_30m, xloc=xloc.bar_index, style=line.style_solid, extend=extend.none, color=color.purple)
+    line.delete(ema223_30m_line[1])
+    ema223_30m_label = label.new(x=bar_index + 4, y=ema223_30m, text='30m', textcolor=color.purple, style=label.style_none)
+    label.delete(ema223_30m_label[1])
+
+// -----------------------------------------------------------------------------
+// NO FOMO
+// -----------------------------------------------------------------------------
+
+var contacandele_no_fomo = 0
+no_fomo = false
+
+if ma1 > ma2
+    contacandele_no_fomo += 1
+
+if contacandele_no_fomo > ContacandeleLength
+    no_fomo := true
+
+if ma1 < ma2
+    contacandele_no_fomo := 0
+
+no_fomo_fin = no_fomo and timeframe.isintraday and timeframe.multiplier <= 30 and show_no_fomo
+
+bgcolor(no_fomo_fin ? color.new(color.red, 80) : na)
+plotshape(no_fomo_fin and not no_fomo_fin[1], '추격매수 금지', style=shape.circle, text='추격금지\n🚫', textcolor=chart.fg_color, location=location.abovebar, color=color.new(color.red, 100), size=size.tiny)
+
+// -----------------------------------------------------------------------------
+// 정보 테이블
+// -----------------------------------------------------------------------------
+
+var ath = 0.0
+if high > ath
+    ath := high
+
+vol = (max_today - min_today) / min_today * 100
+percent_ath = ((ath - close) / close) * 100
+percent_max_today = ((max_today - close) / close) * 100
+
+var count_green_candle = 0
+if close > open
+    count_green_candle += 1
+if close < open
+    count_green_candle := 0
+
+if barstate.islast and show_table_limit
+    table summary_table = table.new(position.top_right, columns=6, rows=8, bgcolor=#0F0F0F, border_width=1, border_color=#000000)
+    table_text_color = #D3D3D3
+    table.cell(summary_table, 1, 5, str.tostring((high * (1 + perc_spread / 100)) - high, format.mintick), text_color=#D3D3D3, bgcolor=color.new(#336b35, 60))
+    table.cell(summary_table, 2, 5, '스프레드', text_color=table_text_color, width=7, bgcolor=#0F0F0F)
+
+    table.cell(summary_table, 1, 2, timeframe.multiplier >= 60 or timeframe.isdaily ? str.tostring(percent_ath, format.percent) : 'TF >= 1시간', text_color=#D3D3D3, bgcolor=timeframe.multiplier >= 60 or timeframe.isdaily ? color.new(#336b35, 60) : color.new(#c8913d, 30))
+    table.cell(summary_table, 2, 2, 'ATH', text_color=table_text_color, width=7, bgcolor=#0F0F0F)
+
+    table.cell(summary_table, 1, 1, str.tostring(vol, format.percent), text_color=#D3D3D3, bgcolor=color.new(#336b35, 60))
+    table.cell(summary_table, 2, 1, '변동성', text_color=table_text_color, width=7, bgcolor=#0F0F0F)
+
+    table.cell(summary_table, 1, 3, str.tostring(percent_max_today, format.percent), text_color=#D3D3D3, bgcolor=color.new(#336b35, 60))
+    table.cell(summary_table, 2, 3, '% 오늘 고점 거리', text_color=table_text_color, width=7, bgcolor=#0F0F0F)
+
+    table.cell(summary_table, 1, 4, str.tostring(count_green_candle), text_color=#D3D3D3, bgcolor=count_green_candle > 4 ? color.rgb(177, 64, 64) : color.new(#336b35, 60))
+    table.cell(summary_table, 2, 4, '양봉 카운터', text_color=table_text_color, width=7, bgcolor=#0F0F0F)

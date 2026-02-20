@@ -1,0 +1,233 @@
+//@version=6
+indicator("1분 컨플루언스 알림 (EMA+ZLSMA+Predicta+Chandelier)", shorttitle="컨플루언스 1M", overlay=true, max_labels_count=100)
+
+import TradingView/ta/11 as TVta
+
+// ============================================================================
+// 입력
+// ============================================================================
+
+grp_ema = "1) EMA 추세 필터 (필수)"
+emaFastLen = input.int(9, "EMA 빠름", minval=1, group=grp_ema)
+emaSlowLen = input.int(21, "EMA 느림", minval=1, group=grp_ema)
+requireSpreadExpansion = input.bool(false, "EMA 벌어짐 필수", group=grp_ema, tooltip="켜면 EMA 간격이 직전보다 넓어질 때만 통과")
+
+grp_zlsma = "2) ZLSMA 단기 흐름"
+zlsmaLen = input.int(20, "ZLSMA 길이", minval=1, group=grp_zlsma)
+zlsmaOffset = input.int(0, "ZLSMA 오프셋", group=grp_zlsma)
+
+grp_predicta = "3) Predicta 확률 필터"
+predictaMode = input.string("실전 기본(58)", "확률 컷", options=["보수형(60)", "실전 기본(58)", "공격형(55)", "직접입력"], group=grp_predicta)
+predictaCutCustom = input.float(58.0, "직접입력 컷", minval=50.0, maxval=90.0, step=0.5, group=grp_predicta)
+neutralLower = input.float(45.0, "중립 하단", minval=0.0, maxval=100.0, step=0.5, group=grp_predicta)
+neutralUpper = input.float(55.0, "중립 상단", minval=0.0, maxval=100.0, step=0.5, group=grp_predicta)
+finalEntryCut = input.float(58.0, "최종 진입 확률 컷", minval=50.0, maxval=95.0, step=0.5, group=grp_predicta, tooltip="사용자 공식: Predicta 확률 58% 이상")
+
+grp_ch = "4) Chandelier 추세 유지"
+chLength = input.int(14, "기간", minval=1, group=grp_ch)
+chAtrLen = input.int(14, "ATR 길이", minval=1, group=grp_ch)
+chAtrMult = input.float(2.2, "ATR 배수", minval=0.1, step=0.1, group=grp_ch)
+
+grp_entry = "5) 실제 진입 트리거"
+entryAtrLen = input.int(10, "ATR 길이", minval=1, group=grp_entry)
+pullbackAtrMult = input.float(0.35, "EMA9 눌림 허용(ATR 배수)", minval=0.05, maxval=2.0, step=0.05, group=grp_entry)
+
+grp_side = "거래 금지 구간(횡보) 필터"
+sideLookback = input.int(20, "횡보 판정 구간(봉)", minval=5, maxval=200, group=grp_side)
+emaTightPct = input.float(0.08, "EMA 밀착 기준(%)", minval=0.01, maxval=2.0, step=0.01, group=grp_side)
+zFlipThreshold = input.int(4, "ZLSMA 잦은 반전 기준", minval=1, maxval=30, group=grp_side)
+chFlipThreshold = input.int(4, "Chandelier 잦은 반전 기준", minval=1, maxval=30, group=grp_side)
+predictaNeutralBarsThreshold = input.int(8, "Predicta 중립 박스 봉 수", minval=1, maxval=200, group=grp_side)
+
+grp_vis = "시각화"
+showHelperLines = input.bool(true, "EMA/ZLSMA/Chandelier 선 표시", group=grp_vis)
+showStateBg = input.bool(true, "배경 상태 표시", group=grp_vis)
+showEntryShapes = input.bool(true, "진입 도형 표시", group=grp_vis)
+
+// ============================================================================
+// 1) EMA 추세 필터
+// ============================================================================
+
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+emaSpreadNow = math.abs(emaFast - emaSlow)
+emaSpreadPrev = math.abs(emaFast[1] - emaSlow[1])
+emaSpreadExpanding = emaSpreadNow > emaSpreadPrev
+
+emaLongOk = emaFast > emaSlow and close > emaSlow and (not requireSpreadExpansion or emaSpreadExpanding)
+emaShortOk = emaFast < emaSlow and close < emaSlow and (not requireSpreadExpansion or emaSpreadExpanding)
+
+// ============================================================================
+// 2) ZLSMA 단기 흐름
+// ============================================================================
+
+zlsmaBase = ta.linreg(close, zlsmaLen, zlsmaOffset)
+zlsmaRef = ta.linreg(zlsmaBase, zlsmaLen, zlsmaOffset)
+zlsma = zlsmaBase + (zlsmaBase - zlsmaRef)
+
+var int zTrend = 0
+zTrend := zlsma > zlsma[1] ? 1 : zlsma < zlsma[1] ? -1 : nz(zTrend[1], 0)
+
+zLongOk = zTrend == 1 and close > zlsma
+zShortOk = zTrend == -1 and close < zlsma
+
+// ============================================================================
+// 3) Predicta 확률 필터 (1분용 축약 계산)
+// ============================================================================
+
+pTrendFast = ta.ema(close, 5)
+pTrendMid = ta.ema(close, 13)
+pTrendSlow = ta.ema(close, 34)
+pTrendUp = pTrendFast > pTrendMid and pTrendMid > pTrendSlow
+pTrendDown = pTrendFast < pTrendMid and pTrendMid < pTrendSlow
+
+pRsi = ta.rsi(close, 9)
+[pMacdLine, pSignalLine, pMacdHist] = ta.macd(close, 8, 17, 5)
+pStochK = ta.stoch(close, high, low, 9)
+pStochD = ta.sma(pStochK, 2)
+
+pVolSma = ta.sma(volume, 14)
+pVolRatio = nz(volume / pVolSma, 1.0)
+
+pCandleRange = high - low
+pBuyVolume = pCandleRange > 0 ? volume * (close - low) / pCandleRange : volume * 0.5
+pSellVolume = pCandleRange > 0 ? volume * (high - close) / pCandleRange : volume * 0.5
+pDelta = pBuyVolume - pSellVolume
+pDeltaEma = ta.ema(pDelta, 6)
+pDeltaMomentum = pDelta > pDeltaEma
+
+[_, __, pAdx] = ta.dmi(10, 10)
+pAtr = ta.atr(10)
+pAtrPctRank = ta.percentrank(pAtr, 60)
+pVolMult = pAtrPctRank > 75 ? 0.85 : pAtrPctRank < 25 ? 1.15 : 1.0
+
+pMacdLong = pMacdLine > pSignalLine and pMacdHist > 0 ? 100 : pMacdLine > pSignalLine ? 70 : pMacdHist > 0 ? 50 : 20
+pMacdShort = pMacdLine < pSignalLine and pMacdHist < 0 ? 100 : pMacdLine < pSignalLine ? 70 : pMacdHist < 0 ? 50 : 20
+
+pRsiLong = pRsi < 30 ? 100 : pRsi < 40 ? 85 : pRsi < 50 ? 70 : pRsi < 60 ? 50 : 25
+pRsiShort = pRsi > 70 ? 100 : pRsi > 60 ? 85 : pRsi > 50 ? 70 : pRsi > 40 ? 50 : 25
+
+pStochLong = pStochK > pStochD and pStochK < 20 ? 100 : pStochK > pStochD and pStochK < 50 ? 85 : pStochK > pStochD ? 65 : 25
+pStochShort = pStochK < pStochD and pStochK > 80 ? 100 : pStochK < pStochD and pStochK > 50 ? 85 : pStochK < pStochD ? 65 : 25
+
+pVolScore = pVolRatio > 2.0 ? 100 : pVolRatio > 1.5 ? 80 : pVolRatio > 1.0 ? 60 : pVolRatio > 0.8 ? 45 : 25
+
+pDeltaLong = pDelta > 0 and pDeltaMomentum ? 100 : pDelta > 0 ? 75 : pDelta > -math.abs(pDeltaEma) ? 40 : 20
+pDeltaShort = pDelta < 0 and not pDeltaMomentum ? 100 : pDelta < 0 ? 75 : pDelta < math.abs(pDeltaEma) ? 40 : 20
+
+pAdxScore = pAdx > 35 ? 100 : pAdx > 30 ? 85 : pAdx > 25 ? 70 : pAdx > 20 ? 50 : 30
+pTrendLong = pTrendUp ? 100 : pTrendFast > pTrendMid ? 80 : 20
+pTrendShort = pTrendDown ? 100 : pTrendFast < pTrendMid ? 80 : 20
+
+pLongRaw = (pTrendLong * 0.23) + (pMacdLong * 0.18) + (pDeltaLong * 0.15) + (pRsiLong * 0.12) + (pStochLong * 0.12) + (pAdxScore * 0.10) + (pVolScore * 0.10)
+pShortRaw = (pTrendShort * 0.23) + (pMacdShort * 0.18) + (pDeltaShort * 0.15) + (pRsiShort * 0.12) + (pStochShort * 0.12) + (pAdxScore * 0.10) + (pVolScore * 0.10)
+
+pLongScore = math.round(math.min(100, math.max(0, pLongRaw * pVolMult)))
+pShortScore = math.round(math.min(100, math.max(0, pShortRaw * pVolMult)))
+
+pTotal = pLongScore + pShortScore
+pLongPct = pTotal > 0 ? math.round((pLongScore / pTotal) * 100) : 50
+pShortPct = 100 - pLongPct
+
+predictaCut = predictaMode == "보수형(60)" ? 60.0 : predictaMode == "공격형(55)" ? 55.0 : predictaMode == "실전 기본(58)" ? 58.0 : predictaCutCustom
+predictaNeutral = pLongPct >= neutralLower and pLongPct <= neutralUpper
+
+predictaLongOk = pLongPct > pShortPct and pLongPct >= predictaCut and not predictaNeutral
+predictaShortOk = pShortPct > pLongPct and pShortPct >= predictaCut and not predictaNeutral
+
+// ============================================================================
+// 4) Chandelier 추세 유지 / 손절 기준
+// ============================================================================
+
+[chLongExit, chShortExit] = TVta.chandelier(chLength, chAtrLen, chAtrMult)
+
+var int chTrend = 0
+chTrend := close > chShortExit ? 1 : close < chLongExit ? -1 : nz(chTrend[1], 0)
+
+chLongOk = close > chLongExit and chTrend == 1
+chShortOk = close < chShortExit and chTrend == -1
+
+chLongSwitch = chTrend == 1 and chTrend[1] != 1
+chShortSwitch = chTrend == -1 and chTrend[1] != -1
+
+// ============================================================================
+// 5) 실제 진입 트리거
+// ============================================================================
+
+entryAtr = ta.atr(entryAtrLen)
+pullbackLong = math.abs(close - emaFast) <= entryAtr * pullbackAtrMult and close >= emaSlow
+pullbackShort = math.abs(close - emaFast) <= entryAtr * pullbackAtrMult and close <= emaSlow
+
+smallBullRebound = close > open and close > close[1] and low <= emaFast
+smallBearReject = close < open and close < close[1] and high >= emaFast
+
+triggerEma5 = ta.ema(close, 5)
+triggerEma10 = ta.ema(close, 10)
+emaCrossUp = ta.crossover(triggerEma5, triggerEma10)
+emaCrossDown = ta.crossunder(triggerEma5, triggerEma10)
+priceCrossUp = ta.crossover(close, emaFast)
+priceCrossDown = ta.crossunder(close, emaFast)
+
+bullScalpTrigger = emaCrossUp or priceCrossUp
+bearScalpTrigger = emaCrossDown or priceCrossDown
+
+entryLongTrigger = pullbackLong or smallBullRebound or bullScalpTrigger
+entryShortTrigger = pullbackShort or smallBearReject or bearScalpTrigger
+
+// ============================================================================
+// 거래 금지 구간(횡보)
+// ============================================================================
+
+emaTight = (emaSpreadNow / close) * 100 <= emaTightPct
+zFlipCount = math.sum(zTrend != zTrend[1] ? 1.0 : 0.0, sideLookback)
+zWhipsaw = zFlipCount >= zFlipThreshold
+
+predictaNeutralCount = math.sum(predictaNeutral ? 1.0 : 0.0, sideLookback)
+predictaChop = predictaNeutralCount >= predictaNeutralBarsThreshold
+
+chFlipCount = math.sum(chTrend != chTrend[1] ? 1.0 : 0.0, sideLookback)
+chWhipsaw = chFlipCount >= chFlipThreshold
+
+sidewaysScore = (emaTight ? 1 : 0) + (zWhipsaw ? 1 : 0) + (predictaChop ? 1 : 0) + (chWhipsaw ? 1 : 0)
+noTradeZone = sidewaysScore >= 2
+
+// ============================================================================
+// 최종 컨플루언스
+// ============================================================================
+
+longConfluenceCore = emaLongOk and zLongOk and predictaLongOk and chLongOk
+shortConfluenceCore = emaShortOk and zShortOk and predictaShortOk and chShortOk
+
+longNow = longConfluenceCore and pLongPct >= finalEntryCut and entryLongTrigger and not noTradeZone
+shortNow = shortConfluenceCore and pShortPct >= finalEntryCut and entryShortTrigger and not noTradeZone
+
+// ============================================================================
+// 시각화
+// ============================================================================
+
+plot(showHelperLines ? emaFast : na, "EMA 빠름", color=color.new(color.green, 0), linewidth=2)
+plot(showHelperLines ? emaSlow : na, "EMA 느림", color=color.new(color.orange, 0), linewidth=2)
+plot(showHelperLines ? zlsma : na, "ZLSMA", color=zTrend == 1 ? color.new(color.lime, 0) : color.new(color.red, 0), linewidth=2)
+plot(showHelperLines ? chLongExit : na, "Chandelier Long", color=color.new(color.teal, 0), linewidth=1)
+plot(showHelperLines ? chShortExit : na, "Chandelier Short", color=color.new(color.maroon, 0), linewidth=1)
+
+bgCol = showStateBg ? (noTradeZone ? color.new(color.orange, 84) : longConfluenceCore ? color.new(color.green, 90) : shortConfluenceCore ? color.new(color.red, 90) : na) : na
+bgcolor(bgCol)
+
+plotshape(showEntryShapes and longNow and not longNow[1], title="롱 지금", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 0), text="지금 롱", textcolor=color.white, size=size.small)
+plotshape(showEntryShapes and shortNow and not shortNow[1], title="숏 지금", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), text="지금 숏", textcolor=color.white, size=size.small)
+
+plotshape(showEntryShapes and chLongSwitch, title="Chandelier 롱 전환", style=shape.circle, location=location.belowbar, color=color.new(color.teal, 0), text="롱전환", textcolor=color.white, size=size.tiny)
+plotshape(showEntryShapes and chShortSwitch, title="Chandelier 숏 전환", style=shape.circle, location=location.abovebar, color=color.new(color.purple, 0), text="숏전환", textcolor=color.white, size=size.tiny)
+
+// ============================================================================
+// 알림
+// ============================================================================
+
+alertcondition(longConfluenceCore and not longConfluenceCore[1], "🟢 롱 컨플루언스 준비", "EMA+ZLSMA+Predicta+Chandelier 롱 조건 정렬")
+alertcondition(shortConfluenceCore and not shortConfluenceCore[1], "🔴 숏 컨플루언스 준비", "EMA+ZLSMA+Predicta+Chandelier 숏 조건 정렬")
+
+alertcondition(longNow and not longNow[1], "🟢 지금 롱 진입", "1분 공식 충족: EMA 정배열 + ZLSMA + Predicta + Chandelier + 트리거")
+alertcondition(shortNow and not shortNow[1], "🔴 지금 숏 진입", "1분 공식 충족: EMA 역배열 + ZLSMA + Predicta + Chandelier + 트리거")
+
+alertcondition(noTradeZone and not noTradeZone[1], "🚫 거래 금지 구간", "횡보/휩쏘 조건 2개 이상 충족 - 쉬는 구간")

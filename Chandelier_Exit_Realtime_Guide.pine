@@ -1,0 +1,101 @@
+//@version=6
+indicator("샹들리에 익싯 - 1분 단타 롱/숏", "샹들리에 1M", overlay=true, max_labels_count=200)
+
+import TradingView/ta/11 as TVta
+
+// Inputs
+scalpMode = input.bool(true, "1분 단타 모드")
+lengthInput = input.int(14, "기간", minval=1)
+atrLenInput = input.int(14, "ATR 기간", minval=1)
+atrMultInput = input.float(2.2, "ATR 배수", minval=0.0, step=0.01)
+
+showLineLabels = input.bool(true, "선 끝 라벨 표시")
+showStatusLabel = input.bool(true, "실시간 상태 라벨 표시")
+showScalpSignals = input.bool(true, "롱/숏 진입 신호 표시")
+labelOffsetBars = input.int(8, "라벨 오프셋 바 수", minval=0, maxval=30)
+showBandFill = input.bool(true, "청산선 구간 채우기")
+showTrendBackground = input.bool(false, "추세 배경색 표시")
+
+isOneMinute = timeframe.isminutes and timeframe.multiplier == 1
+
+// Chandelier values
+[longCE, shortCE] = TVta.chandelier(lengthInput, atrLenInput, atrMultInput)
+
+longColor = color.new(color.lime, 0)
+shortColor = color.new(#ff6d00, 0)
+
+longPlot = plot(longCE, "롱 청산선 (롱 트레일링 스탑)", color=longColor, linewidth=2)
+shortPlot = plot(shortCE, "숏 청산선 (숏 트레일링 스탑)", color=shortColor, linewidth=2)
+fill(longPlot, shortPlot, color=showBandFill ? color.new(color.aqua, 92) : na, title="샹들리에 청산 구간")
+
+// Realtime regime/state
+aboveShortExit = close > shortCE
+belowLongExit = close < longCE
+
+var int trendState = 0
+trendState := aboveShortExit ? 1 : belowLongExit ? -1 : nz(trendState[1], 0)
+
+stateText = aboveShortExit ? "상승 돌파 (종가 > 숏 청산선)" : belowLongExit ? "하락 이탈 (종가 < 롱 청산선)" : trendState == 1 ? "상승 추세 조정 (청산선 구간 내부)" : trendState == -1 ? "하락 추세 반등 (청산선 구간 내부)" : "중립 (청산선 구간 내부)"
+
+bgColor = showTrendBackground ? (trendState == 1 ? color.new(color.green, 92) : trendState == -1 ? color.new(color.red, 92) : color.new(color.gray, 94)) : na
+bgcolor(bgColor)
+
+gapLongPct = na(longCE) ? na : ((close - longCE) / close) * 100
+gapShortPct = na(shortCE) ? na : ((shortCE - close) / close) * 100
+
+trendShiftUp = trendState == 1 and trendState[1] != 1
+trendShiftDown = trendState == -1 and trendState[1] != -1
+plotshape(trendShiftUp, title="상태 -> 상승", style=shape.triangleup, location=location.belowbar, color=longColor, text="상승", textcolor=color.white, size=size.tiny)
+plotshape(trendShiftDown, title="상태 -> 하락", style=shape.triangledown, location=location.abovebar, color=shortColor, text="하락", textcolor=color.white, size=size.tiny)
+
+// 1분 단타 롱/숏 진입 신호
+emaFilter = ta.ema(close, scalpMode ? 5 : 9)
+longSignal = ta.crossover(close, shortCE) and close > emaFilter
+shortSignal = ta.crossunder(close, longCE) and close < emaFilter
+plotshape(showScalpSignals and longSignal, title="롱 진입 신호", style=shape.labelup, location=location.belowbar, color=longColor, text="롱", textcolor=color.white, size=size.tiny)
+plotshape(showScalpSignals and shortSignal, title="숏 진입 신호", style=shape.labeldown, location=location.abovebar, color=shortColor, text="숏", textcolor=color.white, size=size.tiny)
+
+// Line-end labels (create once, then update in realtime)
+var label longLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(longColor, 100), textcolor=color.new(color.white, 100), size=size.small)
+var label shortLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(shortColor, 100), textcolor=color.new(color.white, 100), size=size.small)
+var label statusLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.gray, 100), textcolor=color.new(color.white, 100), size=size.normal)
+
+if barstate.islast
+    if showLineLabels and not na(longCE)
+        longText = "롱 청산선\n롱 포지션 트레일링 스탑\n거리: " + str.tostring(gapLongPct, "#.##") + "%"
+        label.set_x(longLabel, bar_index + labelOffsetBars)
+        label.set_y(longLabel, longCE)
+        label.set_text(longLabel, longText)
+        label.set_color(longLabel, longColor)
+        label.set_textcolor(longLabel, color.white)
+    else
+        label.set_text(longLabel, "")
+        label.set_color(longLabel, color.new(longColor, 100))
+        label.set_textcolor(longLabel, color.new(color.white, 100))
+
+    if showLineLabels and not na(shortCE)
+        shortText = "숏 청산선\n숏 포지션 트레일링 스탑\n거리: " + str.tostring(gapShortPct, "#.##") + "%"
+        label.set_x(shortLabel, bar_index + labelOffsetBars)
+        label.set_y(shortLabel, shortCE)
+        label.set_text(shortLabel, shortText)
+        label.set_color(shortLabel, shortColor)
+        label.set_textcolor(shortLabel, color.white)
+    else
+        label.set_text(shortLabel, "")
+        label.set_color(shortLabel, color.new(shortColor, 100))
+        label.set_textcolor(shortLabel, color.new(color.white, 100))
+
+    if showStatusLabel
+        midY = na(longCE) or na(shortCE) ? close : (longCE + shortCE) / 2
+        stateColor = trendState == 1 ? color.new(color.green, 0) : trendState == -1 ? color.new(color.red, 0) : color.new(color.gray, 0)
+        tfGuide = scalpMode and not isOneMinute ? "\n권장 타임프레임: 1분봉" : ""
+        statusText = "샹들리에 상태 (1분 단타)\n" + stateText + "\n종가: " + str.tostring(close, format.mintick) + tfGuide
+        label.set_x(statusLabel, bar_index + labelOffsetBars)
+        label.set_y(statusLabel, midY)
+        label.set_text(statusLabel, statusText)
+        label.set_color(statusLabel, stateColor)
+        label.set_textcolor(statusLabel, color.white)
+    else
+        label.set_text(statusLabel, "")
+        label.set_color(statusLabel, color.new(color.gray, 100))
+        label.set_textcolor(statusLabel, color.new(color.white, 100))
