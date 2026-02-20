@@ -44,29 +44,46 @@ trendShiftDown = trendState == -1 and trendState[1] != -1
 plotshape(trendShiftUp, title="State -> Bullish", style=shape.triangleup, location=location.belowbar, color=longColor, text="BULL", textcolor=color.white, size=size.tiny)
 plotshape(trendShiftDown, title="State -> Bearish", style=shape.triangledown, location=location.abovebar, color=shortColor, text="BEAR", textcolor=color.white, size=size.tiny)
 
-// Line-end labels
-var label longLabel = na
-var label shortLabel = na
-var label statusLabel = na
+// Line-end labels (create once, then update in realtime)
+var label longLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(longColor, 100), textcolor=color.new(color.white, 100), size=size.small)
+var label shortLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(shortColor, 100), textcolor=color.new(color.white, 100), size=size.small)
+var label statusLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.gray, 100), textcolor=color.new(color.white, 100), size=size.normal)
 
 if barstate.islast
-    if not na(longLabel)
-        label.delete(longLabel)
-    if not na(shortLabel)
-        label.delete(shortLabel)
-    if not na(statusLabel)
-        label.delete(statusLabel)
-
     if showLineLabels and not na(longCE)
         longText = "LONG EXIT\nTrailing stop for longs\nDistance: " + str.tostring(gapLongPct, "#.##") + "%"
-        longLabel := label.new(x=bar_index + labelOffsetBars, y=longCE, text=longText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=longColor, textcolor=color.white, size=size.small)
+        label.set_x(longLabel, bar_index + labelOffsetBars)
+        label.set_y(longLabel, longCE)
+        label.set_text(longLabel, longText)
+        label.set_color(longLabel, longColor)
+        label.set_textcolor(longLabel, color.white)
+    else
+        label.set_text(longLabel, "")
+        label.set_color(longLabel, color.new(longColor, 100))
+        label.set_textcolor(longLabel, color.new(color.white, 100))
 
     if showLineLabels and not na(shortCE)
         shortText = "SHORT EXIT\nTrailing stop for shorts\nDistance: " + str.tostring(gapShortPct, "#.##") + "%"
-        shortLabel := label.new(x=bar_index + labelOffsetBars, y=shortCE, text=shortText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=shortColor, textcolor=color.white, size=size.small)
+        label.set_x(shortLabel, bar_index + labelOffsetBars)
+        label.set_y(shortLabel, shortCE)
+        label.set_text(shortLabel, shortText)
+        label.set_color(shortLabel, shortColor)
+        label.set_textcolor(shortLabel, color.white)
+    else
+        label.set_text(shortLabel, "")
+        label.set_color(shortLabel, color.new(shortColor, 100))
+        label.set_textcolor(shortLabel, color.new(color.white, 100))
 
     if showStatusLabel
         midY = na(longCE) or na(shortCE) ? close : (longCE + shortCE) / 2
         stateColor = trendState == 1 ? color.new(color.green, 0) : trendState == -1 ? color.new(color.red, 0) : color.new(color.gray, 0)
         statusText = "CHANDELIER STATUS\n" + stateText + "\nClose: " + str.tostring(close, format.mintick)
-        statusLabel := label.new(x=bar_index + labelOffsetBars, y=midY, text=statusText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=stateColor, textcolor=color.white, size=size.normal)
+        label.set_x(statusLabel, bar_index + labelOffsetBars)
+        label.set_y(statusLabel, midY)
+        label.set_text(statusLabel, statusText)
+        label.set_color(statusLabel, stateColor)
+        label.set_textcolor(statusLabel, color.white)
+    else
+        label.set_text(statusLabel, "")
+        label.set_color(statusLabel, color.new(color.gray, 100))
+        label.set_textcolor(statusLabel, color.new(color.white, 100))
