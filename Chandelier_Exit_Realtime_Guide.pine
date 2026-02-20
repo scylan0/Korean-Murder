@@ -1,18 +1,18 @@
 //@version=6
-indicator("Chandelier Exit - Realtime Guide", "Chandelier+", overlay=true, max_labels_count=200)
+indicator("샹들리에 익싯 - 실시간 가이드", "샹들리에+", overlay=true, max_labels_count=200)
 
 import TradingView/ta/11 as TVta
 
 // Inputs
-lengthInput = input.int(22, "Length", minval=1)
-atrLenInput = input.int(22, "ATR length", minval=1)
-atrMultInput = input.float(3.0, "ATR multiplier", minval=0.0, step=0.01)
+lengthInput = input.int(22, "기간", minval=1)
+atrLenInput = input.int(22, "ATR 기간", minval=1)
+atrMultInput = input.float(3.0, "ATR 배수", minval=0.0, step=0.01)
 
-showLineLabels = input.bool(true, "Show line-end labels")
-showStatusLabel = input.bool(true, "Show realtime status label")
-labelOffsetBars = input.int(1, "Label offset bars", minval=0, maxval=20)
-showBandFill = input.bool(true, "Show zone fill between exits")
-showTrendBackground = input.bool(false, "Show trend background")
+showLineLabels = input.bool(true, "선 끝 라벨 표시")
+showStatusLabel = input.bool(true, "실시간 상태 라벨 표시")
+labelOffsetBars = input.int(1, "라벨 오프셋 바 수", minval=0, maxval=20)
+showBandFill = input.bool(true, "청산선 구간 채우기")
+showTrendBackground = input.bool(false, "추세 배경색 표시")
 
 // Chandelier values
 [longCE, shortCE] = TVta.chandelier(lengthInput, atrLenInput, atrMultInput)
@@ -20,9 +20,9 @@ showTrendBackground = input.bool(false, "Show trend background")
 longColor = color.new(color.lime, 0)
 shortColor = color.new(#ff6d00, 0)
 
-longPlot = plot(longCE, "Long Exit (LONG trailing stop)", color=longColor, linewidth=2)
-shortPlot = plot(shortCE, "Short Exit (SHORT trailing stop)", color=shortColor, linewidth=2)
-fill(longPlot, shortPlot, color=showBandFill ? color.new(color.aqua, 92) : na, title="Chandelier Exit Zone")
+longPlot = plot(longCE, "롱 청산선 (롱 트레일링 스탑)", color=longColor, linewidth=2)
+shortPlot = plot(shortCE, "숏 청산선 (숏 트레일링 스탑)", color=shortColor, linewidth=2)
+fill(longPlot, shortPlot, color=showBandFill ? color.new(color.aqua, 92) : na, title="샹들리에 청산 구간")
 
 // Realtime regime/state
 aboveShortExit = close > shortCE
@@ -31,7 +31,7 @@ belowLongExit = close < longCE
 var int trendState = 0
 trendState := aboveShortExit ? 1 : belowLongExit ? -1 : nz(trendState[1], 0)
 
-stateText = aboveShortExit ? "BULLISH BREAKOUT (close > short exit)" : belowLongExit ? "BEARISH BREAKDOWN (close < long exit)" : trendState == 1 ? "BULLISH PULLBACK (inside exit zone)" : trendState == -1 ? "BEARISH BOUNCE (inside exit zone)" : "NEUTRAL (inside exit zone)"
+stateText = aboveShortExit ? "상승 돌파 (종가 > 숏 청산선)" : belowLongExit ? "하락 이탈 (종가 < 롱 청산선)" : trendState == 1 ? "상승 추세 조정 (청산선 구간 내부)" : trendState == -1 ? "하락 추세 반등 (청산선 구간 내부)" : "중립 (청산선 구간 내부)"
 
 bgColor = showTrendBackground ? (trendState == 1 ? color.new(color.green, 92) : trendState == -1 ? color.new(color.red, 92) : color.new(color.gray, 94)) : na
 bgcolor(bgColor)
@@ -41,8 +41,8 @@ gapShortPct = na(shortCE) ? na : ((shortCE - close) / close) * 100
 
 trendShiftUp = trendState == 1 and trendState[1] != 1
 trendShiftDown = trendState == -1 and trendState[1] != -1
-plotshape(trendShiftUp, title="State -> Bullish", style=shape.triangleup, location=location.belowbar, color=longColor, text="BULL", textcolor=color.white, size=size.tiny)
-plotshape(trendShiftDown, title="State -> Bearish", style=shape.triangledown, location=location.abovebar, color=shortColor, text="BEAR", textcolor=color.white, size=size.tiny)
+plotshape(trendShiftUp, title="상태 -> 상승", style=shape.triangleup, location=location.belowbar, color=longColor, text="상승", textcolor=color.white, size=size.tiny)
+plotshape(trendShiftDown, title="상태 -> 하락", style=shape.triangledown, location=location.abovebar, color=shortColor, text="하락", textcolor=color.white, size=size.tiny)
 
 // Line-end labels (create once, then update in realtime)
 var label longLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(longColor, 100), textcolor=color.new(color.white, 100), size=size.small)
@@ -51,7 +51,7 @@ var label statusLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_i
 
 if barstate.islast
     if showLineLabels and not na(longCE)
-        longText = "LONG EXIT\nTrailing stop for longs\nDistance: " + str.tostring(gapLongPct, "#.##") + "%"
+        longText = "롱 청산선\n롱 포지션 트레일링 스탑\n거리: " + str.tostring(gapLongPct, "#.##") + "%"
         label.set_x(longLabel, bar_index + labelOffsetBars)
         label.set_y(longLabel, longCE)
         label.set_text(longLabel, longText)
@@ -63,7 +63,7 @@ if barstate.islast
         label.set_textcolor(longLabel, color.new(color.white, 100))
 
     if showLineLabels and not na(shortCE)
-        shortText = "SHORT EXIT\nTrailing stop for shorts\nDistance: " + str.tostring(gapShortPct, "#.##") + "%"
+        shortText = "숏 청산선\n숏 포지션 트레일링 스탑\n거리: " + str.tostring(gapShortPct, "#.##") + "%"
         label.set_x(shortLabel, bar_index + labelOffsetBars)
         label.set_y(shortLabel, shortCE)
         label.set_text(shortLabel, shortText)
@@ -77,7 +77,7 @@ if barstate.islast
     if showStatusLabel
         midY = na(longCE) or na(shortCE) ? close : (longCE + shortCE) / 2
         stateColor = trendState == 1 ? color.new(color.green, 0) : trendState == -1 ? color.new(color.red, 0) : color.new(color.gray, 0)
-        statusText = "CHANDELIER STATUS\n" + stateText + "\nClose: " + str.tostring(close, format.mintick)
+        statusText = "샹들리에 상태\n" + stateText + "\n종가: " + str.tostring(close, format.mintick)
         label.set_x(statusLabel, bar_index + labelOffsetBars)
         label.set_y(statusLabel, midY)
         label.set_text(statusLabel, statusText)
