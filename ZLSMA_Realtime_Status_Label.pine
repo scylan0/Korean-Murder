@@ -2,17 +2,22 @@
 // Based on original idea by veryfid
 
 //@version=6
-indicator(title="ZLSMA - Zero Lag LSMA (Realtime Status)", shorttitle="ZLSMA+", overlay=true, max_labels_count=200)
+indicator(title="ZLSMA - 1분 단타 롱/숏", shorttitle="ZLSMA 1M", overlay=true, max_labels_count=200)
 
-length = input.int(32, "Length", minval=1)
-offset = input.int(0, "Offset")
-src = input.source(close, "Source")
+length = input.int(20, "ZLSMA 길이", minval=1)
+offset = input.int(0, "오프셋")
+src = input.source(close, "소스")
 
-showStatusLabel = input.bool(true, "Show Realtime Status Label")
-labelOffsetBars = input.int(1, "Label Offset Bars", minval=0, maxval=20)
-atrLen = input.int(14, "ATR Length", minval=1)
-sidewaysAtrMult = input.float(0.03, "Sideways Threshold (ATR Mult)", step=0.01, minval=0.0)
-showStateBackground = input.bool(false, "Show State Background")
+scalpMode = input.bool(true, "1분 단타 모드")
+showStatusLabel = input.bool(true, "실시간 상태 라벨 표시")
+showScalpSignals = input.bool(true, "롱/숏 신호 표시")
+labelOffsetBars = input.int(8, "라벨 오프셋 바 수", minval=0, maxval=30)
+atrLen = input.int(10, "ATR 길이", minval=1)
+sidewaysAtrMult = input.float(0.015, "횡보 기준 (ATR 배수)", step=0.005, minval=0.0)
+showStateBackground = input.bool(false, "상태 배경색 표시")
+
+// 1분봉 안내
+isOneMinute = timeframe.isminutes and timeframe.multiplier == 1
 
 // Core ZLSMA calculation
 lsma = ta.linreg(src, length, offset)
@@ -26,8 +31,8 @@ atrValue = ta.atr(atrLen)
 sidewaysThreshold = atrValue * sidewaysAtrMult
 
 trendState = slope > sidewaysThreshold ? 1 : slope < -sidewaysThreshold ? -1 : 0
-trendText = trendState == 1 ? "UPTREND" : trendState == -1 ? "DOWNTREND" : "SIDEWAYS"
-priceText = close > zlsma ? "PRICE ABOVE ZLSMA" : close < zlsma ? "PRICE BELOW ZLSMA" : "PRICE ON ZLSMA"
+trendText = trendState == 1 ? "상승 추세" : trendState == -1 ? "하락 추세" : "횡보"
+priceText = close > zlsma ? "가격이 ZLSMA 위" : close < zlsma ? "가격이 ZLSMA 아래" : "가격이 ZLSMA 근처"
 
 lineColor = trendState == 1 ? color.lime : trendState == -1 ? color.red : color.yellow
 plot(zlsma, color=lineColor, linewidth=3, title="ZLSMA")
@@ -35,38 +40,38 @@ plot(zlsma, color=lineColor, linewidth=3, title="ZLSMA")
 bgColor = showStateBackground ? (trendState == 1 ? color.new(color.green, 92) : trendState == -1 ? color.new(color.red, 92) : color.new(color.gray, 94)) : na
 bgcolor(bgColor)
 
-// Trend change markers (optional visual aid)
+// Trend change markers
 upShift = trendState == 1 and trendState[1] != 1
 downShift = trendState == -1 and trendState[1] != -1
 flatShift = trendState == 0 and trendState[1] != 0
 
-plotshape(upShift, title="ZLSMA Up Shift", style=shape.triangleup, location=location.belowbar, color=color.lime, text="UP", textcolor=color.white, size=size.tiny)
-plotshape(downShift, title="ZLSMA Down Shift", style=shape.triangledown, location=location.abovebar, color=color.red, text="DOWN", textcolor=color.white, size=size.tiny)
-plotshape(flatShift, title="ZLSMA Sideways Shift", style=shape.circle, location=location.abovebar, color=color.yellow, text="FLAT", textcolor=color.black, size=size.tiny)
+plotshape(upShift, title="상태 -> 상승", style=shape.triangleup, location=location.belowbar, color=color.lime, text="상승", textcolor=color.white, size=size.tiny)
+plotshape(downShift, title="상태 -> 하락", style=shape.triangledown, location=location.abovebar, color=color.red, text="하락", textcolor=color.white, size=size.tiny)
+plotshape(flatShift, title="상태 -> 횡보", style=shape.circle, location=location.abovebar, color=color.yellow, text="횡보", textcolor=color.black, size=size.tiny)
 
-// Line-end realtime status label
-var label statusLabel = na
-if barstate.islast and showStatusLabel
-    if not na(statusLabel)
-        label.delete(statusLabel)
+// 1분 단타 롱/숏 신호
+longSignal = ta.crossover(close, zlsma) and trendState == 1
+shortSignal = ta.crossunder(close, zlsma) and trendState == -1
 
-    functionText = "ZLSMA: Zero-Lag trend filter"
-    slopeRounded = math.round(slope * 10000) / 10000
-    statusText = functionText + "\nState: " + trendText + "\n" + priceText + "\nSlope: " + str.tostring(slopeRounded)
-    statusColor = trendState == 1 ? color.green : trendState == -1 ? color.red : color.gray
+plotshape(showScalpSignals and longSignal, title="롱 신호", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 0), text="롱", textcolor=color.white, size=size.tiny)
+plotshape(showScalpSignals and shortSignal, title="숏 신호", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), text="숏", textcolor=color.white, size=size.tiny)
 
-    statusLabel := label.new(
-         x=bar_index + labelOffsetBars,
-         y=zlsma,
-         text=statusText,
-         xloc=xloc.bar_index,
-         yloc=yloc.price,
-         style=label.style_label_left,
-         color=statusColor,
-         textcolor=color.white,
-         size=size.normal
-     )
+// Line-end realtime status label (create once, update)
+var label statusLabel = label.new(x=bar_index, y=close, text="", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.gray, 100), textcolor=color.new(color.white, 100), size=size.normal)
 
-if (not showStatusLabel) and (not na(statusLabel))
-    label.delete(statusLabel)
-    statusLabel := na
+if barstate.islast
+    if showStatusLabel
+        slopeRounded = math.round(slope * 10000) / 10000
+        tfGuide = scalpMode and not isOneMinute ? "\n권장 타임프레임: 1분봉" : ""
+        statusText = "ZLSMA 1분 단타\n상태: " + trendText + "\n" + priceText + "\n기울기: " + str.tostring(slopeRounded) + tfGuide
+        statusColor = trendState == 1 ? color.green : trendState == -1 ? color.red : color.gray
+
+        label.set_x(statusLabel, bar_index + labelOffsetBars)
+        label.set_y(statusLabel, zlsma)
+        label.set_text(statusLabel, statusText)
+        label.set_color(statusLabel, statusColor)
+        label.set_textcolor(statusLabel, color.white)
+    else
+        label.set_text(statusLabel, "")
+        label.set_color(statusLabel, color.new(color.gray, 100))
+        label.set_textcolor(statusLabel, color.new(color.white, 100))

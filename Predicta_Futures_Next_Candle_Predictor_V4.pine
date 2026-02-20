@@ -9,31 +9,38 @@
 //
 // V4.1 EK UI DUZENLEME:
 // - PERFECT LONG/SHORT sinyalleri artik sekil yerine metin etiketi olarak gosteriliyor
+// V4.2 1M SCALPING:
+// - 1 dakika long/short icin hizli parametre modu eklendi
+// - Projection olasilik etiketleri daha saga tasindi (cakisma azaltildi)
 //
 // ============================================================================
 
 //@version=6
-indicator("Predicta Futures - Next Candle Predictor V4", overlay=true, max_boxes_count=100, max_lines_count=100, max_labels_count=100)
+indicator("Predicta Futures - Next Candle Predictor V4 (1M Scalping)", overlay=true, max_boxes_count=100, max_lines_count=100, max_labels_count=100)
 
 // ============================================================================
 // INPUT SETTINGS
 // ============================================================================
 
 grp_main = "Main Settings"
-atrLength = input.int(14, "ATR Period", minval=5, maxval=50, group=grp_main)
-stFactor = input.float(3.0, "Trend Factor", minval=1.0, maxval=5.0, step=0.1, group=grp_main)
-stPeriod = input.int(10, "Trend ATR Period", minval=5, maxval=30, group=grp_main)
+scalpMode = input.bool(true, "Enable 1M Scalping Mode", group=grp_main, tooltip="Optimizes internal logic for 1-minute long/short scalping")
+atrLength = input.int(10, "ATR Period", minval=5, maxval=50, group=grp_main)
+stFactor = input.float(2.4, "Trend Factor", minval=1.0, maxval=5.0, step=0.1, group=grp_main)
+stPeriod = input.int(7, "Trend ATR Period", minval=5, maxval=30, group=grp_main)
 
 grp_confluence = "Confluence Settings"
-minConfluence = input.int(5, "Minimum Confluence Score (1-8)", minval=3, maxval=8, group=grp_confluence, tooltip="V3: 8 nokta sistemi, onerilen minimum: 5")
-minVolumeRatio = input.float(0.8, "Minimum Volume Ratio", minval=0.5, maxval=2.0, step=0.1, group=grp_confluence)
-adxThreshold = input.int(25, "ADX Trend Threshold", minval=15, maxval=40, group=grp_confluence, tooltip="V3: Akademik arastirma 25+ oneriyor")
+minConfluence = input.int(4, "Minimum Confluence Score (1-8)", minval=3, maxval=8, group=grp_confluence, tooltip="1M scalp icin onerilen minimum: 4-5")
+minVolumeRatio = input.float(0.7, "Minimum Volume Ratio", minval=0.5, maxval=2.0, step=0.1, group=grp_confluence)
+adxThreshold = input.int(22, "ADX Trend Threshold", minval=15, maxval=40, group=grp_confluence, tooltip="1M scalp icin daha hizli tepki degeri")
 
 grp_vis = "Visual Settings"
 showTable = input.bool(true, "Show Analysis Table", group=grp_vis)
 showProjection = input.bool(true, "Show Prediction Candles", group=grp_vis)
 showTrendFill = input.bool(true, "Show Trend Background Fill", group=grp_vis)
 showPerfectText = input.bool(true, "Show PERFECT TIME Text Labels", group=grp_vis)
+projectionLabelOffset = input.int(11, "Projection Probability Label Right Shift", minval=5, maxval=30, group=grp_vis, tooltip="Move % labels to the right to avoid overlap with other indicators")
+
+isOneMinute = timeframe.isminutes and timeframe.multiplier == 1
 
 // ============================================================================
 // COLORS
@@ -90,7 +97,8 @@ buyVolume = candleRange > 0 ? volume * (close - low) / candleRange : volume * 0.
 sellVolume = candleRange > 0 ? volume * (high - close) / candleRange : volume * 0.5
 volumeDelta = buyVolume - sellVolume
 
-deltaEma = ta.ema(volumeDelta, 10)
+deltaEmaLen = scalpMode ? 6 : 10
+deltaEma = ta.ema(volumeDelta, deltaEmaLen)
 deltaMomentum = volumeDelta > deltaEma
 
 deltaBullish = volumeDelta > 0
@@ -102,26 +110,37 @@ deltaBearish = volumeDelta < 0
 
 atr = ta.atr(atrLength)
 
-ema8 = ta.ema(close, 8)
-ema21 = ta.ema(close, 21)
-ema50 = ta.ema(close, 50)
+emaFastLen = scalpMode ? 5 : 8
+emaMidLen = scalpMode ? 13 : 21
+emaSlowLen = scalpMode ? 34 : 50
+ema8 = ta.ema(close, emaFastLen)
+ema21 = ta.ema(close, emaMidLen)
+ema50 = ta.ema(close, emaSlowLen)
 
-rsi = ta.rsi(close, 14)
+rsiLen = scalpMode ? 9 : 14
+rsi = ta.rsi(close, rsiLen)
 rsiAbove50 = rsi > 50
 rsiBelow50 = rsi < 50
 
-[macdLine, signalLine, macdHist] = ta.macd(close, 12, 26, 9)
+macdFast = scalpMode ? 8 : 12
+macdSlow = scalpMode ? 17 : 26
+macdSignal = scalpMode ? 5 : 9
+[macdLine, signalLine, macdHist] = ta.macd(close, macdFast, macdSlow, macdSignal)
 
-stochK = ta.stoch(close, high, low, 14)
-stochD = ta.sma(stochK, 3)
+stochLen = scalpMode ? 9 : 14
+stochSmooth = scalpMode ? 2 : 3
+stochK = ta.stoch(close, high, low, stochLen)
+stochD = ta.sma(stochK, stochSmooth)
 stochAbove50 = stochK > 50
 stochBelow50 = stochK < 50
 
-volSma = ta.sma(volume, 20)
+volSmaLen = scalpMode ? 14 : 20
+avgBodyLen = scalpMode ? 3 : 5
+volSma = ta.sma(volume, volSmaLen)
 volRatio = nz(volume / volSma, 1.0)
-avgBody = ta.sma(math.abs(close - open), 5)
+avgBody = ta.sma(math.abs(close - open), avgBodyLen)
 
-adxLen = 14
+adxLen = scalpMode ? 10 : 14
 [diPlus, diMinus, adxValue] = ta.dmi(adxLen, adxLen)
 
 bbMid = ta.sma(close, 20)
@@ -132,7 +151,8 @@ bbWidth = bbStd * 2 / bbMid * 100
 // VOLATILITY REGIME DETECTION
 // ============================================================================
 
-atrPercentile = ta.percentrank(atr, 100)
+atrPercentileLookback = scalpMode ? 60 : 100
+atrPercentile = ta.percentrank(atr, atrPercentileLookback)
 volRegime = atrPercentile > 75 ? "HIGH" : atrPercentile < 25 ? "LOW" : "MEDIUM"
 
 volMultiplier = atrPercentile > 75 ? 0.85 : atrPercentile < 25 ? 1.15 : 1.0
@@ -141,7 +161,8 @@ volMultiplier = atrPercentile > 75 ? 0.85 : atrPercentile < 25 ? 1.15 : 1.0
 // DYNAMIC THRESHOLD (ADX Based)
 // ============================================================================
 
-dynamicThreshold = adxValue > 30 ? 55 : adxValue > 25 ? 60 : adxValue > 20 ? 65 : 70
+dynamicThresholdBase = adxValue > 30 ? 55 : adxValue > 25 ? 60 : adxValue > 20 ? 65 : 70
+dynamicThreshold = scalpMode ? math.max(50, dynamicThresholdBase - 4) : dynamicThresholdBase
 
 // ============================================================================
 // SCORING SYSTEM
@@ -180,13 +201,17 @@ shortPct = 100 - longPct
 // 8-POINT CONFLUENCE SYSTEM
 // ============================================================================
 
+adxThresholdEff = scalpMode ? int(math.max(18, adxThreshold - 3)) : adxThreshold
+minVolumeRatioEff = scalpMode ? math.max(0.5, minVolumeRatio - 0.1) : minVolumeRatio
+minConfluenceEff = scalpMode ? int(math.max(4, minConfluence - 1)) : minConfluence
+
 confluenceLong = 0
 confluenceLong += isUptrend ? 1 : 0
 confluenceLong += ema8 > ema21 ? 1 : 0
 confluenceLong += macdLine > signalLine ? 1 : 0
 confluenceLong += stochK > stochD ? 1 : 0
-confluenceLong += volRatio >= minVolumeRatio ? 1 : 0
-confluenceLong += adxValue > adxThreshold ? 1 : 0
+confluenceLong += volRatio >= minVolumeRatioEff ? 1 : 0
+confluenceLong += adxValue > adxThresholdEff ? 1 : 0
 confluenceLong += rsiAbove50 ? 1 : 0
 confluenceLong += deltaBullish ? 1 : 0
 
@@ -195,19 +220,19 @@ confluenceShort += isDowntrend ? 1 : 0
 confluenceShort += ema8 < ema21 ? 1 : 0
 confluenceShort += macdLine < signalLine ? 1 : 0
 confluenceShort += stochK < stochD ? 1 : 0
-confluenceShort += volRatio >= minVolumeRatio ? 1 : 0
-confluenceShort += adxValue > adxThreshold ? 1 : 0
+confluenceShort += volRatio >= minVolumeRatioEff ? 1 : 0
+confluenceShort += adxValue > adxThresholdEff ? 1 : 0
 confluenceShort += rsiBelow50 ? 1 : 0
 confluenceShort += deltaBearish ? 1 : 0
 
-volumeOk = volRatio >= minVolumeRatio
+volumeOk = volRatio >= minVolumeRatioEff
 
 // ============================================================================
 // PERFECT TIME - V4 CRITICAL FIX: Delta Confirmation ZORUNLU
 // ============================================================================
 
-longPerfect = isUptrend and longPct >= dynamicThreshold and confluenceLong >= minConfluence and volumeOk and rsiAbove50 and deltaBullish
-shortPerfect = isDowntrend and shortPct >= dynamicThreshold and confluenceShort >= minConfluence and volumeOk and rsiBelow50 and deltaBearish
+longPerfect = isUptrend and longPct >= dynamicThreshold and confluenceLong >= minConfluenceEff and volumeOk and rsiAbove50 and deltaBullish
+shortPerfect = isDowntrend and shortPct >= dynamicThreshold and confluenceShort >= minConfluenceEff and volumeOk and rsiBelow50 and deltaBearish
 
 longPerfectTrigger = longPerfect and not longPerfect[1]
 shortPerfectTrigger = shortPerfect and not shortPerfect[1]
@@ -267,8 +292,10 @@ getVolRegimeIcon() =>
 var table analysisTable = table.new(position.top_right, 2, 21, bgcolor=colBgDark, border_width=0, frame_width=2, frame_color=colGray)
 
 if barstate.islast and showTable
-    table.cell(analysisTable, 0, 0, "PREDICTA V4", text_color=colYellow, bgcolor=colBgDark, text_size=size.small, text_halign=text.align_left)
-    table.cell(analysisTable, 1, 0, getVolRegimeIcon(), text_color=colText, bgcolor=colBgDark, text_size=size.small, text_halign=text.align_right)
+    headerTitle = scalpMode ? "PREDICTA V4 1M" : "PREDICTA V4"
+    headerRight = getVolRegimeIcon() + (scalpMode and not isOneMinute ? " ⚠TF" : "")
+    table.cell(analysisTable, 0, 0, headerTitle, text_color=colYellow, bgcolor=colBgDark, text_size=size.small, text_halign=text.align_left)
+    table.cell(analysisTable, 1, 0, headerRight, text_color=colText, bgcolor=colBgDark, text_size=size.small, text_halign=text.align_right)
 
     table.cell(analysisTable, 0, 1, "LONG ANALYSIS", text_color=colText, bgcolor=colLong, text_size=size.normal, text_halign=text.align_left)
     table.cell(analysisTable, 1, 1, "PREDICTION " + str.tostring(longPct) + "%", text_color=colText, bgcolor=colLong, text_size=size.normal, text_halign=text.align_right)
@@ -301,7 +328,7 @@ if barstate.islast and showTable
     adxColorL = adxScore >= 60 ? colLong : colGray
     table.cell(analysisTable, 1, 8, getAsciiBar(adxScore) + " " + getAdxText(), text_color=adxColorL, bgcolor=colBg, text_size=size.small, text_halign=text.align_left)
 
-    confLongColor = confluenceLong >= minConfluence ? colLong : colGray
+    confLongColor = confluenceLong >= minConfluenceEff ? colLong : colGray
     table.cell(analysisTable, 0, 9, "CONFLUENCE", text_color=colYellow, bgcolor=colBg, text_size=size.small, text_halign=text.align_left)
     table.cell(analysisTable, 1, 9, str.tostring(confluenceLong) + " / 8", text_color=confLongColor, bgcolor=colBg, text_size=size.small, text_halign=text.align_left)
 
@@ -340,7 +367,7 @@ if barstate.islast and showTable
     adxColorS = adxScore >= 60 ? colShort : colGray
     table.cell(analysisTable, 1, 18, getAsciiBar(adxScore) + " " + getAdxText(), text_color=adxColorS, bgcolor=colBg, text_size=size.small, text_halign=text.align_left)
 
-    confShortColor = confluenceShort >= minConfluence ? colShort : colGray
+    confShortColor = confluenceShort >= minConfluenceEff ? colShort : colGray
     table.cell(analysisTable, 0, 19, "CONFLUENCE", text_color=colYellow, bgcolor=colBg, text_size=size.small, text_halign=text.align_left)
     table.cell(analysisTable, 1, 19, str.tostring(confluenceShort) + " / 8", text_color=confShortColor, bgcolor=colBg, text_size=size.small, text_halign=text.align_left)
 
@@ -407,13 +434,13 @@ if barstate.islast and showProjection
     longProjWickUp := line.new(bar_index + 3, close + longHeight, bar_index + 3, close + longHeight + wickLen, color=colLong, width=2)
     longProjWickDown := line.new(bar_index + 3, close, bar_index + 3, close - wickLen, color=colLong, width=2)
     longLabelText = longPerfect ? "🎯 " + str.tostring(longPct) + "%" : str.tostring(longPct) + "%"
-    longProjLabel := label.new(bar_index + 3, close + longHeight + wickLen + atr * 0.15, longLabelText, style=label.style_label_down, color=colLong, textcolor=colText, size=size.normal)
+    longProjLabel := label.new(bar_index + projectionLabelOffset, close + longHeight + wickLen + atr * 0.15, longLabelText, style=label.style_label_down, color=colLong, textcolor=colText, size=size.normal)
 
     shortProjBody := box.new(bar_index + 5, close, bar_index + 6, close - shortHeight, bgcolor=colShort, border_color=colShort, border_width=1)
     shortProjWickUp := line.new(bar_index + 5, close, bar_index + 5, close + wickLen, color=colShort, width=2)
     shortProjWickDown := line.new(bar_index + 5, close - shortHeight, bar_index + 5, close - shortHeight - wickLen, color=colShort, width=2)
     shortLabelText = shortPerfect ? "🎯 " + str.tostring(shortPct) + "%" : str.tostring(shortPct) + "%"
-    shortProjLabel := label.new(bar_index + 5, close - shortHeight - wickLen - atr * 0.15, shortLabelText, style=label.style_label_up, color=colShort, textcolor=colText, size=size.normal)
+    shortProjLabel := label.new(bar_index + projectionLabelOffset + 2, close - shortHeight - wickLen - atr * 0.15, shortLabelText, style=label.style_label_up, color=colShort, textcolor=colText, size=size.normal)
 
 // ============================================================================
 // BUY / SELL SIGNALS (Delta Confirmation)
